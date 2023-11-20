@@ -61,9 +61,10 @@ def OGMM(X, K_max, sigma0, alpha, T_split):
         P = torch.zeros(len(GMM))
         for j in range(len(GMM)):
             P[j] = GMM[j][0] * normal_pdf(new_x, mean=GMM[j][2], cov=GMM[j][3])
-        if len(GMM) > 0 and torch.sum(P) == 0:
+        
+        '''if len(GMM) > 0 and torch.sum(P) == 0:
             dist = [torch.dist(new_x, GMM[k][2], p=2) for k in range(len(GMM))]
-            P[np.argmin(dist)] = 1
+            P[np.argmin(dist)] = 1'''
         if len(GMM) < K_max:
             GMM.append([alpha, 1, new_x, sigma0])
         else:
