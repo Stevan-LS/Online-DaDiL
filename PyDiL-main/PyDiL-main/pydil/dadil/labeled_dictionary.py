@@ -502,7 +502,7 @@ class LabeledDictionary(torch.nn.Module):
                 loss = 0
                 for ℓ, (Qℓ, αℓ) in enumerate(zip(datasets, self.A)):
                     # Sample minibatch from dataset
-                    XQℓ, YQℓ = Qℓ.sample(batch_size)
+                    XQℓ, YQℓ = Qℓ.sample()
 
                     # Sample minibatch from atoms
                     XP, YP = self.sample_from_atoms(n=batch_size)

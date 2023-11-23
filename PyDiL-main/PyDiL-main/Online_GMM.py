@@ -1,10 +1,12 @@
 import torch
 import numpy as np
 from scipy.special import logsumexp
+from sklearn.decomposition import IncrementalPCA
+
 
 class Online_GMM(torch.nn.Module):
 
-    def __init__(self, n_components, lr, n_features, data_range):
+    def __init__(self, n_components, lr, n_features, data_range, batch_size):
             self.lr = lr
             self.n_components = n_components
             self.n_features = n_features
@@ -15,6 +17,8 @@ class Online_GMM(torch.nn.Module):
             self.c = []
             self.means = []
             self.cov = []
+            self.batch_size = batch_size
+            self.ipca = None
     
     def split_gaussian(self, gauss_number):
         eigenvalues, eigenvectors = torch.linalg.eigh(self.cov[gauss_number])
@@ -136,8 +140,17 @@ class Online_GMM(torch.nn.Module):
                     min_value = torch.min(bwm).item()
                     min_indexes = torch.argwhere(bwm == min_value)[0]
                     self.merge_gaussian(min_indexes[0], min_indexes[1])
+    
+    def fit_sample_with_dim_reduction(self, X):
+        if self.ipca == None:
+            self.ipca = IncrementalPCA(n_components=self.n_features)
+        self.ipca.partial_fit(X)
+        X_trans = torch.from_numpy(self.ipca.transform(X)).float()
+        self.fit_sample(X_trans)        
+        
 
-    def sample(self, n_samples):
+    def sample(self, n_samples=None):
+        n_samples = self.batch_size if n_samples is None else n_samples
         n_samples_comp = np.random.multinomial(n_samples, np.array(self.weights))
         X = np.vstack(
                 [
@@ -147,6 +160,8 @@ class Online_GMM(torch.nn.Module):
                     )
                 ]
             )
+        if self.ipca is not None:
+            X = self.ipca.inverse_transform(X) 
         return torch.from_numpy(X).float(), None
 
     def generate_list(self):
@@ -176,6 +191,29 @@ class Online_GMM(torch.nn.Module):
         for i in range(X.shape[0]):
             for j in range(len(self.weights)):
                 log_pdf[i, j] = np.log(self.weights[j]) + self.log_normal_pdf(X[i], self.means[j], self.cov[j], bib)
+                
+        # Sum log likelihoods of each data point
+        return np.sum(logsumexp(log_pdf, axis=1))
+    
+    def log_likelihood_with_dim_reduction(self, X, bib='numpy'):
+        """
+        Calculate the log-likelihood of a set of data points given a Gaussian mixture model.
+
+        Parameters:
+            X (ndarray): An array of shape (n_samples, n_features) containing the data points.
+            bib (str, optional): The library to use for the mathematical operations. Defaults to 'numpy'.
+
+        Returns:
+            float: The log-likelihood of the data points under the Gaussian mixture model.
+        """
+        X_trans = torch.from_numpy(self.ipca.transform(X)).float()
+        # Initialize an array to store the log probability densities
+        log_pdf = np.zeros((X_trans.shape[0], len(self.weights)))
+
+        # Calculate the log probability density for each data point and mixture component
+        for i in range(X_trans.shape[0]):
+            for j in range(len(self.weights)):
+                log_pdf[i, j] = np.log(self.weights[j]) + self.log_normal_pdf(X_trans[i], self.means[j], self.cov[j], bib)
                 
         # Sum log likelihoods of each data point
         return np.sum(logsumexp(log_pdf, axis=1))
