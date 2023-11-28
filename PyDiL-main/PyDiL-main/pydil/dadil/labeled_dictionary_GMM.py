@@ -256,19 +256,32 @@ class LabeledDictionaryGMM(torch.nn.Module):
             a_data = A
         self.A = torch.nn.parameter.Parameter(data=a_data, requires_grad=True)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self, regularization=False):
         r"""Returns optimizers for dictionary variables."""
-        if self.grad_labels:
-            return torch.optim.Adam([
-                {'params': self.XP, 'lr': self.learning_rate_features},
-                {'params': self.YP, 'lr': self.learning_rate_labels},
-                {'params': self.A, 'lr': self.learning_rate_weights}
-            ])
+        if regularization:
+            if self.grad_labels:
+                return torch.optim.Adam([
+                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features/10},
+                    {'params': self.YP, 'lr': self.learning_rate_labels, 'weight_decay': self.learning_rate_labels/10},
+                    {'params': self.A, 'lr': self.learning_rate_weights}
+                ])
+            else:
+                return torch.optim.Adam([
+                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features/10},
+                    {'params': self.A, 'lr': self.learning_rate_weights}
+                ])
         else:
-            return torch.optim.Adam([
-                {'params': self.XP, 'lr': self.learning_rate_features},
-                {'params': self.A, 'lr': self.learning_rate_weights}
-            ])
+            if self.grad_labels:
+                return torch.optim.Adam([
+                    {'params': self.XP, 'lr': self.learning_rate_features},
+                    {'params': self.YP, 'lr': self.learning_rate_labels},
+                    {'params': self.A, 'lr': self.learning_rate_weights}
+                ])
+            else:
+                return torch.optim.Adam([
+                    {'params': self.XP, 'lr': self.learning_rate_features},
+                    {'params': self.A, 'lr': self.learning_rate_weights}
+                ])
 
     def get_atoms(self):
         r"""Gets a list containing atoms features and labels."""
@@ -462,24 +475,13 @@ class LabeledDictionaryGMM(torch.nn.Module):
             if self.schedule_lr:
                 self.scheduler.step(avg_it_loss)
         self.fitted = True
-    
-    def sampling_from_GMM(self, GMM, n_samples):
-        n_samples_comp = np.random.multinomial(n_samples, np.array([gauss[0]for gauss in GMM]))
-        X = np.vstack(
-                [
-                    np.random.multivariate_normal(mean, covariance, int(sample))
-                    for (mean, covariance, sample) in zip(
-                        [gauss[2]for gauss in GMM], [gauss[3]for gauss in GMM], n_samples_comp
-                    )
-                ]
-            )
-        return torch.from_numpy(X).float()
 
     def fit(self,
             datasets,
             n_iter_max=100,
             batches_per_it=10,
-            verbose=True):
+            verbose=True,
+            regularization=False):
         r"""Minimizes DaDiL's objective function by sampling
         mini-batches from the atoms support with replacement.
 
@@ -495,7 +497,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
         verbose : bool, optional (default=True)
             If True, prints progress of DaDiL's Optimization loop.
         """
-        self.optimizer = self.configure_optimizers()
+        self.optimizer = self.configure_optimizers(regularization=regularization)
         if self.schedule_lr:
             self.scheduler = ReduceLROnPlateau(self.optimizer)
         batch_size = datasets[0].batch_size
@@ -513,18 +515,11 @@ class LabeledDictionaryGMM(torch.nn.Module):
 
                 loss = 0
                 for ℓ, (Qℓ, αℓ) in enumerate(zip(datasets, self.A)):
+                    # Sample minibatch from dataset
+                    XQℓ, YQℓ = Qℓ.sample(batch_size)
 
-                    is_target = ℓ==len(datasets)-1
-
-                    if is_target:
-                        # Sample minibatch from target GMM
-                        XQℓ, YQℓ = self.sampling_from_GMM(Qℓ, int(batch_size)), None
-                    else:
-                        # Sample minibatch from dataset
-                        XQℓ, YQℓ = Qℓ.sample()
-
-                        # Sample minibatch from atoms
-                        XP, YP = self.sample_from_atoms(n=batch_size)
+                    # Sample minibatch from atoms
+                    XP, YP = self.sample_from_atoms(n=batch_size)
 
                     # Calculates Wasserstein barycenter
                     XBℓ, YBℓ = wasserstein_barycenter(
