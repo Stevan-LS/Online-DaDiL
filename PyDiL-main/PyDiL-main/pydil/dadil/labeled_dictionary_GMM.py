@@ -261,13 +261,13 @@ class LabeledDictionaryGMM(torch.nn.Module):
         if regularization:
             if self.grad_labels:
                 return torch.optim.Adam([
-                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features/10},
-                    {'params': self.YP, 'lr': self.learning_rate_labels, 'weight_decay': self.learning_rate_labels/10},
+                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features},
+                    {'params': self.YP, 'lr': self.learning_rate_labels, 'weight_decay': self.learning_rate_labels},
                     {'params': self.A, 'lr': self.learning_rate_weights}
                 ])
             else:
                 return torch.optim.Adam([
-                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features/10},
+                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features},
                     {'params': self.A, 'lr': self.learning_rate_weights}
                 ])
         else:
