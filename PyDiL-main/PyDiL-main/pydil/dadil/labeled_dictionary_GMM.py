@@ -7,6 +7,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from pydil.ot_utils.pot_utils import proj_simplex
 from pydil.ipms.ot_ipms import JointWassersteinDistance
 from pydil.ot_utils.barycenters import wasserstein_barycenter
+import sys
+sys.path.append('../../')
+import Online_GMM
 
 
 class LabeledDictionaryGMM(torch.nn.Module):
@@ -123,7 +126,9 @@ class LabeledDictionaryGMM(torch.nn.Module):
                  barycenter_beta=None,
                  tensor_dtype=torch.float32,
                  track_atoms=False,
-                 schedule_lr=True):
+                 schedule_lr=True,
+                 GMM_components=13,
+                 GMM_dim_reduction=3):
         super(LabeledDictionaryGMM, self).__init__()
 
         self.n_samples = n_samples
@@ -185,6 +190,10 @@ class LabeledDictionaryGMM(torch.nn.Module):
             'atoms_labels': [],
             'loss_per_dataset': {name: [] for name in self.domain_names}
         }
+
+        self.OGMM = None
+        self.GMM_components = GMM_components
+        self.GMM_dim_reduction = GMM_dim_reduction
 
     def __initialize_atoms_features(self, XP=None):
         if XP is None:
@@ -261,13 +270,13 @@ class LabeledDictionaryGMM(torch.nn.Module):
         if regularization:
             if self.grad_labels:
                 return torch.optim.Adam([
-                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features},
-                    {'params': self.YP, 'lr': self.learning_rate_labels, 'weight_decay': self.learning_rate_labels},
+                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features/10},
+                    {'params': self.YP, 'lr': self.learning_rate_labels, 'weight_decay': self.learning_rate_labels/10},
                     {'params': self.A, 'lr': self.learning_rate_weights}
                 ])
             else:
                 return torch.optim.Adam([
-                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features},
+                    {'params': self.XP, 'lr': self.learning_rate_features, 'weight_decay': self.learning_rate_features/10},
                     {'params': self.A, 'lr': self.learning_rate_weights}
                 ])
         else:
@@ -506,6 +515,104 @@ class LabeledDictionaryGMM(torch.nn.Module):
             avg_it_loss = 0
             avg_it_loss_per_dataset = {
                 self.domain_names[ℓ]: 0 for ℓ in range(len(datasets))}
+            if verbose:
+                pbar = tqdm(range(batches_per_it))
+            else:
+                pbar = range(batches_per_it)
+            for _ in pbar:
+                self.optimizer.zero_grad()
+
+                loss = 0
+                for ℓ, (Qℓ, αℓ) in enumerate(zip(datasets, self.A)):
+                    # Sample minibatch from dataset
+                    XQℓ, YQℓ = Qℓ.sample(batch_size)
+
+                    # Sample minibatch from atoms
+                    XP, YP = self.sample_from_atoms(n=batch_size)
+
+                    # Calculates Wasserstein barycenter
+                    XBℓ, YBℓ = wasserstein_barycenter(
+                        XP, YP=YP, XB=None, YB=None,
+                        weights=αℓ, n_samples=batch_size,
+                        reg_e=self.reg_e, label_weight=None,
+                        n_iter_max=self.n_iter_barycenter,
+                        n_iter_sinkhorn=self.n_iter_sinkhorn,
+                        n_iter_emd=self.n_iter_emd, tol=self.barycenter_tol,
+                        verbose=False, inner_verbose=False, log=False,
+                        propagate_labels=True, penalize_labels=True)
+
+                    # Calculates Loss
+                    loss_ℓ = self.loss_fn(XQ=XQℓ, YQ=YQℓ, XP=XBℓ, YP=YBℓ)
+
+                    # Accumulates loss
+                    loss += loss_ℓ
+                    loss_val = loss_ℓ.detach().cpu().item() / batches_per_it
+                    avg_it_loss_per_dataset[self.domain_names[ℓ]] += loss_val
+
+                loss.backward()
+                self.optimizer.step()
+
+                # Projects the weights into the simplex
+                with torch.no_grad():
+                    self.A.data = proj_simplex(self.A.data.T).T
+
+                avg_it_loss += loss.item() / batches_per_it
+            # Saves history info
+            _XP, _YP = self.get_atoms()
+            self.history['atoms_features'].append(_XP)
+            self.history['atoms_labels'].append(_YP)
+            self.history['weights'].append(proj_simplex(self.A.data.T).T)
+            self.history['loss'].append(avg_it_loss)
+            for ℓ in range(len(datasets)):
+                self.history['loss_per_dataset'][self.domain_names[ℓ]].append(
+                    avg_it_loss_per_dataset[self.domain_names[ℓ]]
+                )
+            if verbose:
+                print('It {}/{}, Loss: {}'.format(it, n_iter_max, avg_it_loss))
+            if self.schedule_lr:
+                self.scheduler.step(avg_it_loss)
+        self.fitted = True
+    
+    def fit_target_sample(self,
+            target_sample,
+            batches_per_it=10,
+            batch_size=128,
+            verbose=True,
+            regularization=False):
+        r"""Minimizes DaDiL's objective function by sampling
+        mini-batches from the atoms support with replacement.
+
+        Parameters
+        ----------
+        datasets : list of measures
+            List of measure objects, which implement sampling from
+            datasets.
+        n_iter_max : int, optional (default=100)
+            Number of epoch in DaDiL's optimization
+        batches_per_it : int, optional (default=10)
+            Number of batches drawn from the atoms per iteration.
+        verbose : bool, optional (default=True)
+            If True, prints progress of DaDiL's Optimization loop.
+        """
+        if self.OGMM == None:
+            self.OGMM = Online_GMM(
+                n_components=self.GMM_components,
+                lr=0.1,
+                n_features=self.GMM_dim_reduction,
+                data_range=torch.mean(torch.max(torch.concat(list(self.XP), axis = 0), axis=0).values - 
+                                      torch.min(torch.concat(list(self.XP), axis = 0), axis=0).values).item(),
+                batch_size=batch_size
+            )
+        self.OGMM.fit_sample(target_sample, dimension_reduction=True)
+
+        self.optimizer = self.configure_optimizers(regularization=regularization)
+        if self.schedule_lr:
+            self.scheduler = ReduceLROnPlateau(self.optimizer)
+        for it in range(target_sample.shape[0]):
+            # Calculates the loss
+            avg_it_loss = 0
+            avg_it_loss_per_dataset = {
+                self.domain_names[0]: 0 }
             if verbose:
                 pbar = tqdm(range(batches_per_it))
             else:
