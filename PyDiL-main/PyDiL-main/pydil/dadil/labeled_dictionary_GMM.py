@@ -7,9 +7,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from pydil.ot_utils.pot_utils import proj_simplex
 from pydil.ipms.ot_ipms import JointWassersteinDistance
 from pydil.ot_utils.barycenters import wasserstein_barycenter
-import sys
-sys.path.append('../../')
-import Online_GMM
+from pydil.utils.Online_GMM import Online_GMM
 
 
 class LabeledDictionaryGMM(torch.nn.Module):
@@ -160,7 +158,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
                 raise ValueError(("If 'domain_names' is not given,"
                                   " 'n_distributions' must be provided."))
             self.domain_names = [
-                "Domain {}".format(ℓ) for ℓ in range(n_distributions)]
+                "Domain {}".format(l) for l in range(n_distributions)]
         else:
             self.domain_names = domain_names
 
@@ -608,67 +606,61 @@ class LabeledDictionaryGMM(torch.nn.Module):
         self.optimizer = self.configure_optimizers(regularization=regularization)
         if self.schedule_lr:
             self.scheduler = ReduceLROnPlateau(self.optimizer)
-        for it in range(target_sample.shape[0]):
-            # Calculates the loss
-            avg_it_loss = 0
-            avg_it_loss_per_dataset = {
-                self.domain_names[0]: 0 }
-            if verbose:
-                pbar = tqdm(range(batches_per_it))
-            else:
-                pbar = range(batches_per_it)
-            for _ in pbar:
-                self.optimizer.zero_grad()
+        # Calculates the loss
+        avg_it_loss = 0
+        avg_it_loss_per_dataset = {
+            self.domain_names[0]: 0 }
+        pbar = range(batches_per_it)
+        for _ in pbar:
+            self.optimizer.zero_grad()
 
-                loss = 0
-                for ℓ, (Qℓ, αℓ) in enumerate(zip(datasets, self.A)):
-                    # Sample minibatch from dataset
-                    XQℓ, YQℓ = Qℓ.sample(batch_size)
+            loss = 0
+            # Sample minibatch from dataset
+            XQl, YQl = self.OGMM.sample(batch_size)
 
-                    # Sample minibatch from atoms
-                    XP, YP = self.sample_from_atoms(n=batch_size)
+            # Sample minibatch from atoms
+            XP, YP = self.sample_from_atoms(n=batch_size)
 
-                    # Calculates Wasserstein barycenter
-                    XBℓ, YBℓ = wasserstein_barycenter(
-                        XP, YP=YP, XB=None, YB=None,
-                        weights=αℓ, n_samples=batch_size,
-                        reg_e=self.reg_e, label_weight=None,
-                        n_iter_max=self.n_iter_barycenter,
-                        n_iter_sinkhorn=self.n_iter_sinkhorn,
-                        n_iter_emd=self.n_iter_emd, tol=self.barycenter_tol,
-                        verbose=False, inner_verbose=False, log=False,
-                        propagate_labels=True, penalize_labels=True)
+            # Calculates Wasserstein barycenter
+            XBl, YBl = wasserstein_barycenter(
+                XP, YP=YP, XB=None, YB=None,
+                weights=self.A[-1, :], n_samples=batch_size,
+                reg_e=self.reg_e, label_weight=None,
+                n_iter_max=self.n_iter_barycenter,
+                n_iter_sinkhorn=self.n_iter_sinkhorn,
+                n_iter_emd=self.n_iter_emd, tol=self.barycenter_tol,
+                verbose=False, inner_verbose=False, log=False,
+                propagate_labels=True, penalize_labels=True)
 
-                    # Calculates Loss
-                    loss_ℓ = self.loss_fn(XQ=XQℓ, YQ=YQℓ, XP=XBℓ, YP=YBℓ)
+            # Calculates Loss
+            loss_l = self.loss_fn(XQ=XQl, YQ=YQl, XP=XBl, YP=YBl)
 
-                    # Accumulates loss
-                    loss += loss_ℓ
-                    loss_val = loss_ℓ.detach().cpu().item() / batches_per_it
-                    avg_it_loss_per_dataset[self.domain_names[ℓ]] += loss_val
+            # Accumulates loss
+            loss += loss_l
+            loss_val = loss_l.detach().cpu().item() / batches_per_it
+            avg_it_loss_per_dataset[self.domain_names[0]] += loss_val
 
-                loss.backward()
-                self.optimizer.step()
+            loss.backward()
+            self.optimizer.step()
 
-                # Projects the weights into the simplex
-                with torch.no_grad():
-                    self.A.data = proj_simplex(self.A.data.T).T
+            # Projects the weights into the simplex
+            with torch.no_grad():
+                self.A.data = proj_simplex(self.A.data.T).T
 
-                avg_it_loss += loss.item() / batches_per_it
-            # Saves history info
-            _XP, _YP = self.get_atoms()
-            self.history['atoms_features'].append(_XP)
-            self.history['atoms_labels'].append(_YP)
-            self.history['weights'].append(proj_simplex(self.A.data.T).T)
-            self.history['loss'].append(avg_it_loss)
-            for ℓ in range(len(datasets)):
-                self.history['loss_per_dataset'][self.domain_names[ℓ]].append(
-                    avg_it_loss_per_dataset[self.domain_names[ℓ]]
-                )
-            if verbose:
-                print('It {}/{}, Loss: {}'.format(it, n_iter_max, avg_it_loss))
-            if self.schedule_lr:
-                self.scheduler.step(avg_it_loss)
+            avg_it_loss += loss.item() / batches_per_it
+        # Saves history info
+        _XP, _YP = self.get_atoms()
+        self.history['atoms_features'].append(_XP)
+        self.history['atoms_labels'].append(_YP)
+        self.history['weights'].append(proj_simplex(self.A.data.T).T)
+        self.history['loss'].append(avg_it_loss)
+        self.history['loss_per_dataset'][self.domain_names[0]].append(
+            avg_it_loss_per_dataset[self.domain_names[0]]
+        )
+        if verbose:
+            print('Loss: {}'.format(avg_it_loss))
+        if self.schedule_lr:
+            self.scheduler.step(avg_it_loss)
         self.fitted = True
 
     def transform(self,
