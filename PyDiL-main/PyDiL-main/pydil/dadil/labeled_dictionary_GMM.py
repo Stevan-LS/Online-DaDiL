@@ -513,10 +513,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
             avg_it_loss = 0
             avg_it_loss_per_dataset = {
                 self.domain_names[ℓ]: 0 for ℓ in range(len(datasets))}
-            if verbose:
-                pbar = tqdm(range(batches_per_it))
-            else:
-                pbar = range(batches_per_it)
+            pbar = range(batches_per_it)
             for _ in pbar:
                 self.optimizer.zero_grad()
 
@@ -566,7 +563,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
                     avg_it_loss_per_dataset[self.domain_names[ℓ]]
                 )
             if verbose:
-                print('It {}/{}, Loss: {}'.format(it, n_iter_max, avg_it_loss))
+                print('It {}/{}, Loss: {}'.format(it+1, n_iter_max, avg_it_loss))
             if self.schedule_lr:
                 self.scheduler.step(avg_it_loss)
         self.fitted = True

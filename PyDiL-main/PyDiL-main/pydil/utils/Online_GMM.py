@@ -150,7 +150,7 @@ class Online_GMM(torch.nn.Module):
     def sample(self, n_samples=None):
         n_samples = self.batch_size if n_samples is None else n_samples
         if np.sum(np.array(self.weights)[:-1].astype(np.float64)) > 1:
-            self.weights = self.weights/np.sum(np.array(self.weights).astype(np.float64))
+            self.weights = [self.weights[i]/1.000001 for i in range(len(self.weights))]
         n_samples_comp = np.random.multinomial(n_samples, np.array(self.weights))
         X = np.vstack(
                 [
