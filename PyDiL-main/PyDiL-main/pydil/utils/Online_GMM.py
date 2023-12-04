@@ -173,7 +173,7 @@ class Online_GMM(torch.nn.Module):
         else:
             return -len(x)/2*torch.log(torch.tensor(2*torch.pi)) - 1/2*(torch.log(torch.linalg.det(cov)) + (x - mean).T @ torch.inverse(cov) @ (x - mean))
 
-    def log_likelihood(self, X, bib='numpy', dimension_reduction=False):
+    def score_samples(self, X, bib='numpy', dimension_reduction=False):
         """
         Calculate the log-likelihood of a set of data points given a Gaussian mixture model.
 
@@ -196,4 +196,4 @@ class Online_GMM(torch.nn.Module):
                 log_pdf[i, j] = np.log(self.weights[j]) + self.log_normal_pdf(X[i], self.means[j], self.cov[j], bib)
                 
         # Sum log likelihoods of each data point
-        return np.sum(logsumexp(log_pdf, axis=1))
+        return logsumexp(log_pdf, axis=1)

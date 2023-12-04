@@ -192,6 +192,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
         self.OGMM = None
         self.GMM_components = GMM_components
         self.GMM_dim_reduction = GMM_dim_reduction
+        self.online_optimizer = None
 
     def __initialize_atoms_features(self, XP=None):
         if XP is None:
@@ -600,16 +601,17 @@ class LabeledDictionaryGMM(torch.nn.Module):
             )
         self.OGMM.fit_sample(target_sample, dimension_reduction=True)
 
-        self.optimizer = self.configure_optimizers(regularization=regularization)
+        if self.online_optimizer == None:
+            self.online_optimizer = self.configure_optimizers(regularization=regularization)
         if self.schedule_lr:
-            self.scheduler = ReduceLROnPlateau(self.optimizer)
+            self.scheduler = ReduceLROnPlateau(self.online_optimizer)
         # Calculates the loss
         avg_it_loss = 0
         avg_it_loss_per_dataset = {
             self.domain_names[0]: 0 }
         pbar = range(batches_per_it)
         for _ in pbar:
-            self.optimizer.zero_grad()
+            self.online_optimizer.zero_grad()
 
             loss = 0
             # Sample minibatch from dataset
@@ -638,7 +640,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
             avg_it_loss_per_dataset[self.domain_names[0]] += loss_val
 
             loss.backward()
-            self.optimizer.step()
+            self.online_optimizer.step()
 
             # Projects the weights into the simplex
             with torch.no_grad():
@@ -768,7 +770,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
             else:
                 XB, YB = wasserstein_barycenter(
                     XP, YP=YP, XB=None, YB=None,
-                    weights=αℓ, n_samples=n_samples_barycenter,
+                    weights=weights, n_samples=n_samples_barycenter,
                     reg_e=self.reg_e, label_weight=None,
                     n_iter_max=self.n_iter_barycenter,
                     n_iter_sinkhorn=self.n_iter_sinkhorn,
