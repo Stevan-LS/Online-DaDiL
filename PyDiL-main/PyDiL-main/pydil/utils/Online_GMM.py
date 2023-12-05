@@ -164,7 +164,7 @@ class Online_GMM(torch.nn.Module):
             X = self.ipca.inverse_transform(X) 
         return torch.from_numpy(X).float(), None
 
-    def generate_list(self):
+    def get_GMM(self):
         return [[self.weights[i], self.c[i],self.means[i], self.cov[i]] for i in range(len(self.weights))]
     
     def log_normal_pdf(self, x, mean, cov, bib='numpy'):

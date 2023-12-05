@@ -489,7 +489,9 @@ class LabeledDictionaryGMM(torch.nn.Module):
             n_iter_max=100,
             batches_per_it=10,
             verbose=True,
-            regularization=False):
+            regularization=False,
+            sklearn_GMM = False,
+            batch_size_GMM = 260):
         r"""Minimizes DaDiL's objective function by sampling
         mini-batches from the atoms support with replacement.
 
@@ -508,7 +510,10 @@ class LabeledDictionaryGMM(torch.nn.Module):
         self.optimizer = self.configure_optimizers(regularization=regularization)
         if self.schedule_lr:
             self.scheduler = ReduceLROnPlateau(self.optimizer)
-        batch_size = datasets[0].batch_size
+        if sklearn_GMM:
+            batch_size = batch_size_GMM
+        else:
+            batch_size = datasets[0].batch_size
         for it in range(n_iter_max):
             # Calculates the loss
             avg_it_loss = 0
@@ -520,8 +525,11 @@ class LabeledDictionaryGMM(torch.nn.Module):
 
                 loss = 0
                 for ℓ, (Qℓ, αℓ) in enumerate(zip(datasets, self.A)):
-                    # Sample minibatch from dataset
-                    XQℓ, YQℓ = Qℓ.sample(batch_size)
+                    if l == len(datasets)-1 and sklearn_GMM:
+                        XQℓ, YQℓ = torch.from_numpy(Qℓ.sample(batch_size)[0]).float(), None
+                    else:
+                        # Sample minibatch from dataset
+                        XQℓ, YQℓ = Qℓ.sample(batch_size)
 
                     # Sample minibatch from atoms
                     XP, YP = self.sample_from_atoms(n=batch_size)
@@ -750,7 +758,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
         if n_samples_barycenter is None:
             n_samples_barycenter = n_samples_atoms
         else:
-            n_samples_barycenter
+            n_samples_barycenter = n_samples_barycenter
         XP, YP = self.sample_from_atoms(n=n_samples_atoms, detach=True)
         with torch.no_grad():
             if weights is None:
