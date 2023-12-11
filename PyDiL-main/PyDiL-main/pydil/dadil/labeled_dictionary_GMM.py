@@ -126,7 +126,8 @@ class LabeledDictionaryGMM(torch.nn.Module):
                  track_atoms=False,
                  schedule_lr=True,
                  GMM_components=13,
-                 GMM_dim_reduction=3):
+                 GMM_dim_reduction=3,
+                 data_range=1):
         super(LabeledDictionaryGMM, self).__init__()
 
         self.n_samples = n_samples
@@ -192,6 +193,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
         self.OGMM = None
         self.GMM_components = GMM_components
         self.GMM_dim_reduction = GMM_dim_reduction
+        self.data_range = data_range
         self.online_optimizer = None
 
     def __initialize_atoms_features(self, XP=None):
@@ -603,8 +605,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
                 n_components=self.GMM_components,
                 lr=0.1,
                 n_features=self.GMM_dim_reduction,
-                data_range=torch.mean(torch.max(torch.concat(list(self.XP), axis = 0), axis=0).values - 
-                                      torch.min(torch.concat(list(self.XP), axis = 0), axis=0).values).item(),
+                data_range=self.data_range, #torch.mean(torch.max(torch.concat(list(self.XP), axis = 0), axis=0).values - torch.min(torch.concat(list(self.XP), axis = 0), axis=0).values).item(),
                 batch_size=batch_size
             )
         self.OGMM.fit_sample(target_sample, dimension_reduction=True)
