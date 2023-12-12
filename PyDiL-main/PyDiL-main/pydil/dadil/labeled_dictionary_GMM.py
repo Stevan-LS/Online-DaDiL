@@ -8,6 +8,7 @@ from pydil.ot_utils.pot_utils import proj_simplex
 from pydil.ipms.ot_ipms import JointWassersteinDistance
 from pydil.ot_utils.barycenters import wasserstein_barycenter
 from pydil.utils.Online_GMM import Online_GMM
+from pydil.utils.igmm import IGMM
 
 
 class LabeledDictionaryGMM(torch.nn.Module):
@@ -601,6 +602,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
             If True, prints progress of DaDiL's Optimization loop.
         """
         if self.OGMM == None:
+            '''
             self.OGMM = Online_GMM(
                 n_components=self.GMM_components,
                 lr=0.1,
@@ -608,8 +610,10 @@ class LabeledDictionaryGMM(torch.nn.Module):
                 data_range=self.data_range, #torch.mean(torch.max(torch.concat(list(self.XP), axis = 0), axis=0).values - torch.min(torch.concat(list(self.XP), axis = 0), axis=0).values).item(),
                 batch_size=batch_size
             )
-        self.OGMM.fit_sample(target_sample, dimension_reduction=True)
-
+        self.OGMM.fit_sample(target_sample, dimension_reduction=True)'''
+            self.OGMM = IGMM(min_components=10, max_step_components=10, max_components=20)
+        self.OGMM.train(target_sample)
+        
         if self.online_optimizer == None:
             self.online_optimizer = self.configure_optimizers(regularization=regularization)
         if self.schedule_lr:
