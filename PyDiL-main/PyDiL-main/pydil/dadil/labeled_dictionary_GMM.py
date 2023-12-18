@@ -8,7 +8,7 @@ from pydil.ot_utils.pot_utils import proj_simplex
 from pydil.ipms.ot_ipms import JointWassersteinDistance
 from pydil.ot_utils.barycenters import wasserstein_barycenter
 from pydil.utils.Online_GMM import Online_GMM
-from pydil.utils.igmm import IGMM
+from pydil.utils.igmm_modif import IGMM
 
 
 class LabeledDictionaryGMM(torch.nn.Module):
