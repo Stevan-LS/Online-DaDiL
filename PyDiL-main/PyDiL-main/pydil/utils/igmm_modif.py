@@ -138,7 +138,7 @@ class IGMM(GMM):
             self.ax_old[2].set_title('Current Term Model')
             self.fig_old.show()
 
-    def train(self, data):
+    def fit(self, data):
         if self.initialized:
             if self.params['plot']:
                 self.ax_old[0].clear()

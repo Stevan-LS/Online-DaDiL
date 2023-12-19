@@ -126,9 +126,9 @@ class LabeledDictionaryGMM(torch.nn.Module):
                  tensor_dtype=torch.float32,
                  track_atoms=False,
                  schedule_lr=True,
-                 GMM_components=13,
-                 GMM_dim_reduction=3,
-                 data_range=1):
+                 min_components=10,
+                 max_step_components=10,
+                 max_components=20):
         super(LabeledDictionaryGMM, self).__init__()
 
         self.n_samples = n_samples
@@ -192,9 +192,10 @@ class LabeledDictionaryGMM(torch.nn.Module):
         }
 
         self.OGMM = None
-        self.GMM_components = GMM_components
-        self.GMM_dim_reduction = GMM_dim_reduction
-        self.data_range = data_range
+        self.min_components = min_components
+        self.max_step_components = max_step_components
+        self.max_components = max_components
+        
         self.online_optimizer = None
 
     def __initialize_atoms_features(self, XP=None):
@@ -602,17 +603,8 @@ class LabeledDictionaryGMM(torch.nn.Module):
             If True, prints progress of DaDiL's Optimization loop.
         """
         if self.OGMM == None:
-            '''
-            self.OGMM = Online_GMM(
-                n_components=self.GMM_components,
-                lr=0.1,
-                n_features=self.GMM_dim_reduction,
-                data_range=self.data_range, #torch.mean(torch.max(torch.concat(list(self.XP), axis = 0), axis=0).values - torch.min(torch.concat(list(self.XP), axis = 0), axis=0).values).item(),
-                batch_size=batch_size
-            )
-        self.OGMM.fit_sample(target_sample, dimension_reduction=True)'''
-            self.OGMM = IGMM(min_components=10, max_step_components=10, max_components=20)
-        self.OGMM.train(target_sample)
+            self.OGMM = IGMM(min_components=self.min_components, max_step_components=self.max_step_components, max_components=self.max_components)
+        self.OGMM.fit(target_sample)
         
         if self.online_optimizer == None:
             self.online_optimizer = self.configure_optimizers(regularization=regularization)
