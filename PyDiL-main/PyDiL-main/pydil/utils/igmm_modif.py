@@ -248,6 +248,7 @@ class IGMM(GMM):
             if bic[-1] < lowest_bic:
                 lowest_bic = bic[-1]
                 best_gmm = n_components
+            '''
             try:
                 if (bic[-1] > bic[-2] > bic[-3] and
                                 bic[-3] < bic[-4] < bic[-5]):
@@ -256,6 +257,7 @@ class IGMM(GMM):
 
             except IndexError:
                 pass
+            '''
         # if best_gmm <= 6: # The derivative does not make sense here  #THS MUST BE CHECKED
         best_gmm = np.array(bic).argmin() + lims[0]
 
