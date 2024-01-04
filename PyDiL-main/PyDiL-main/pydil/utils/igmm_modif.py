@@ -1,23 +1,9 @@
-"""
-Created on April,2017
-
-@author: Juan Manuel Acevedo Valle
-"""
 from sklearn.mixture import GaussianMixture as GMM
-import itertools
-from scipy import linalg
-import matplotlib as mpl
-
-import matplotlib.pyplot as plt
 import numpy as np
 import copy
-from scipy import linalg as LA
-from numpy import linalg
 import torch
 from scipy.special import logsumexp
 
-
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 class DynamicParameter(object):
     def __init__(self, *args, **conf):
@@ -136,13 +122,10 @@ class IGMM(GMM):
 
             self.short_term_model = IGMM(min_components=self.params['init_components'])
             self.short_term_model.get_best_gmm(data, lims=[1, self.params['max_step_components']])
-                                               # lims=[self.params['init_components'], self.params['max_step_components']])
             self.short_term_model.weights_ = ff_tmp * self.short_term_model.weights_
-            self.weights_ = (self.weights_.sum() - ff_tmp) * self.weights_  # Regularization to keep sum(w)=1.0
+            self.weights_ = (1 - ff_tmp) * self.weights_
 
-            gmm_new = copy.deepcopy(self.short_term_model)
-
-            gmm_new = self.merge_GMM(gmm_new)
+            gmm_new = self.merge_GMM(self.short_term_model)
             self.add_GMM(gmm_new)
 
             self.weights_=self.weights_/sum(self.weights_) #Regularization
