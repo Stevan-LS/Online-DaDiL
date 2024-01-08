@@ -148,16 +148,12 @@ class IGMM(GMM):
 
             if bic < lowest_bic:
                 lowest_bic = bic
-                best_gmm = n_components
+                best_gmm = gmm
 
-        gmm = GMM(n_components=best_gmm,
-                      covariance_type='full')
-        gmm.fit(data)
-
-        self.weights_ = gmm.weights_
-        self.covariances_ = gmm.covariances_ # self.covariances_ = gmm._get_covars()
-        self.means_ = gmm.means_
-        self.n_components = gmm.n_components
+        self.weights_ = best_gmm.weights_
+        self.covariances_ = best_gmm.covariances_
+        self.means_ = best_gmm.means_
+        self.n_components = best_gmm.n_components
 
     def get_bic(self, data):
         return self.bic(data)
@@ -166,17 +162,17 @@ class IGMM(GMM):
         while self.n_components + gmm2.n_components > self.params['max_components']:
             # Selecting high related Gaussians to be merged
             gmm1 = self
-            similarity = self.get_similarity_matrix(gmm1, gmm2)
+            similarity = self.get_distance_matrix(gmm1, gmm2)
             indices = np.unravel_index(similarity.argmin(), similarity.shape)
             gmm2 = self.merge_new_gauss_to_GMM(gmm2, indices[0],
                                         indices[1])
         return gmm2
 
     def merge_new_gauss_to_GMM(self, gmm2, index1, index2):
-        gauss1 = {'covariance': self.covariances_[index1], #_get_covars()[index1],
+        gauss1 = {'covariance': self.covariances_[index1],
                   'mean': self.means_[index1],
                   'weight': self.weights_[index1]}
-        gauss2 = {'covariance': gmm2.covariances_[index2], #_get_covars()[index2],
+        gauss2 = {'covariance': gmm2.covariances_[index2],
                   'mean': gmm2.means_[index2],
                   'weight': gmm2.weights_[index2]}
         gauss = self.merge_gaussians(gauss1, gauss2)
@@ -217,14 +213,14 @@ class IGMM(GMM):
         self.weights_ = np.concatenate([self.weights_, gmm2.weights_], axis=0)
         self.n_components = new_n_components
     
-    def get_similarity_matrix(self, gmm1, gmm2):
+    def get_distance_matrix(self, gmm1, gmm2):
         n_comp_1 = gmm1.n_components
         n_comp_2 = gmm2.n_components
         similarity_matrix = np.full((n_comp_1, n_comp_2), np.inf)
         for i, (Mu, Sigma) in enumerate(zip(gmm1.means_, gmm1.covariances_)):
             Mu = torch.from_numpy(Mu).float()
             Sigma = torch.from_numpy(Sigma).float()
-            for j, (Mu2, Sigma2) in enumerate(zip(gmm2.means_[:i], gmm2.covariances_[:i])):
+            for j, (Mu2, Sigma2) in enumerate(zip(gmm2.means_, gmm2.covariances_)):
                 Mu2 = torch.from_numpy(Mu2).float()
                 Sigma2 = torch.from_numpy(Sigma2).float()
                 similarity_matrix[i, j] = self.bures_wasserstein_metric(Mu, Mu2, Sigma, Sigma2)
@@ -240,9 +236,9 @@ class IGMM(GMM):
         return A_sqrt
 
     def bures_wasserstein_metric(self, mean1, mean2, cov1, cov2):
-        sqrt_src_cov = self.sqrtm(cov1)
+        sqrt_cov1 = self.sqrtm(cov1)
 
-        M = self.sqrtm(torch.mm(sqrt_src_cov, torch.mm(cov2, sqrt_src_cov)))
+        M = self.sqrtm(torch.mm(sqrt_cov1, torch.mm(cov2, sqrt_cov1)))
         bures_metric = torch.trace(cov1) + torch.trace(cov2) - 2 * torch.trace(M)
 
         return torch.sqrt(torch.dist(mean1, mean2, p=2) ** 2 + bures_metric)
