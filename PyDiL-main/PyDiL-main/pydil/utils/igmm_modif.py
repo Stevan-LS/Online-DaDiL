@@ -46,41 +46,19 @@ class DynamicParameter(object):
 
     def get_value(self):
         if self.conf['is_constant']:
-            return copy.copy(self.values)
+            return self.values
         else:
             self.idx += 1
             if self.idx >self.conf['max_idx']:
                 self.conf['is_constant'] = True
-                self.values = copy.copy(self.values[-1])
+                self.values = self.values[-1]
                 return self.get_value()
-            return copy.copy(self.values[self.idx])
-
-    def generate_log(self):
-        log = 'type: DynamicParameter,'
-        for key in self.conf.keys():
-            try:
-                attr_log = self.conf[key].generate_log()
-                log+=(key + ': {')
-                log+=(attr_log)
-                log+=('}')
-                log = log.replace('\n}', '}')
-            except IndexError:
-                print("INDEX ERROR in DynamicParamater log generation")
-            except AttributeError:
-                log+=(key + ': ' + str(self.conf[key]) + ',')
-        if log[-1] == ',':
-            return log[:-1]
-        else:
-            return log
+            return self.values[self.idx]
 
     def __print__(self):
         return str(self.value())
 
 class IGMM(GMM):
-    '''
-    classdocs
-    '''
-
     def __init__(self, min_components=3,
                  max_step_components=30,
                  max_components=60,
