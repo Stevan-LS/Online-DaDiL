@@ -260,6 +260,7 @@ def test_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_class
 
     classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True), 'RF': RandomForestClassifier()}
     classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',), 'RF': RandomForestClassifier()}
+    ogmm_samples = dictionary_target.OGMM.sample(6000)[0]
 
     for key in classifiers_e.keys():
         # Without DA
@@ -295,12 +296,12 @@ def test_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_class
                 # Get atom data
                 XP_k, YP_k = XP_k.data.cpu(), YP_k.data.cpu()
                 weights_k = torch.ones(XP_k.shape[0])/XP_k.shape[0]
-                weights_t = torch.ones(Xt.shape[0])/Xt.shape[0]
-                C = torch.cdist(XP_k, Xt, p=2) ** 2
+                weights_t = torch.ones(ogmm_samples.shape[0])/ogmm_samples.shape[0]
+                C = torch.cdist(XP_k, ogmm_samples, p=2) ** 2
                 ot_plan = ot.emd(weights_k, weights_t, C, numItermax=1000000)
                 Yt = ot_plan.T @ YP_k
                 yt_k = Yt.argmax(dim=1)
-                clf_e.fit(Xt, yt_k)
+                clf_e.fit(ogmm_samples, yt_k)
                 P = clf_e.predict_proba(Xt_test)
                 predictions.append(P)
             predictions = np.stack(predictions)
@@ -322,11 +323,11 @@ def test_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_class
         s = 0
         for _ in range(10):
             weights_r = torch.ones(Xr.shape[0])/Xr.shape[0]
-            weights_t = torch.ones(Xt.shape[0])/Xt.shape[0]
-            C = torch.cdist(Xr, Xt, p=2) ** 2
+            weights_t = torch.ones(ogmm_samples.shape[0])/ogmm_samples.shape[0]
+            C = torch.cdist(Xr, ogmm_samples, p=2) ** 2
             ot_plan = ot.emd(weights_r, weights_t, C, numItermax=1000000)
             Yt = ot_plan.T @ Yr
-            clf_r.fit(Xt, Yt.argmax(dim=1))
+            clf_r.fit(ogmm_samples, Yt.argmax(dim=1))
             yp = clf_r.predict(Xt_test)
             accuracy_r_ot = accuracy_score(yp, yt_test)
             s += accuracy_r_ot
@@ -404,21 +405,21 @@ def test_forgetting_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_sampl
             #DaDiL-R
             clf_r = classifiers_r[key]
             clf_r.fit(Xr, Yr.argmax(dim=1))
-            yp = clf_r.predict(Xt_test)
-            accuracy_r = accuracy_score(yp, yt_test)
+            yp = clf_r.predict(Xs[i])
+            accuracy_r = accuracy_score(yp, ys[i])
             before_online_results[key]['r'].append(accuracy_r)
 
             #DaDiL-R with last optimal transport
             s = 0
             for _ in range(10):
                 weights_r = torch.ones(Xr.shape[0])/Xr.shape[0]
-                weights_t = torch.ones(Xt.shape[0])/Xt.shape[0]
-                C = torch.cdist(Xr, Xt, p=2) ** 2
+                weights_t = torch.ones(Xs[i].shape[0])/Xs[i].shape[0]
+                C = torch.cdist(Xr, Xs[i], p=2) ** 2
                 ot_plan = ot.emd(weights_r, weights_t, C, numItermax=1000000)
                 Yt = ot_plan.T @ Yr
-                clf_r.fit(Xt, Yt.argmax(dim=1))
-                yp = clf_r.predict(Xt_test)
-                accuracy_r_ot = accuracy_score(yp, yt_test)
+                clf_r.fit(Xs[i], Yt.argmax(dim=1))
+                yp = clf_r.predict(Xs[i])
+                accuracy_r_ot = accuracy_score(yp, ys[i])
                 s += accuracy_r_ot
             before_online_results[key]['r_ot'].append(s/10)
 
@@ -473,21 +474,21 @@ def test_forgetting_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_sampl
             #DaDiL-R
             clf_r = classifiers_r[key]
             clf_r.fit(Xr, Yr.argmax(dim=1))
-            yp = clf_r.predict(Xt_test)
-            accuracy_r = accuracy_score(yp, yt_test)
+            yp = clf_r.predict(Xs[i])
+            accuracy_r = accuracy_score(yp, ys[i])
             after_online_results[key]['r'].append(accuracy_r)
 
             #DaDiL-R with last optimal transport
             s = 0
             for _ in range(10):
                 weights_r = torch.ones(Xr.shape[0])/Xr.shape[0]
-                weights_t = torch.ones(Xt.shape[0])/Xt.shape[0]
-                C = torch.cdist(Xr, Xt, p=2) ** 2
+                weights_t = torch.ones(Xs[i].shape[0])/Xs[i].shape[0]
+                C = torch.cdist(Xr, Xs[i], p=2) ** 2
                 ot_plan = ot.emd(weights_r, weights_t, C, numItermax=1000000)
                 Yt = ot_plan.T @ Yr
-                clf_r.fit(Xt, Yt.argmax(dim=1))
-                yp = clf_r.predict(Xt_test)
-                accuracy_r_ot = accuracy_score(yp, yt_test)
+                clf_r.fit(Xs[i], Yt.argmax(dim=1))
+                yp = clf_r.predict(Xs[i])
+                accuracy_r_ot = accuracy_score(yp, ys[i])
                 s += accuracy_r_ot
             after_online_results[key]['r_ot'].append(s/10)
     

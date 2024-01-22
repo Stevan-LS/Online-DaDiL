@@ -18,6 +18,7 @@ from pydil.torch_utils.measures import (  # noqa: E402
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
 
 
 def prepare_dataset(dataset):
@@ -43,14 +44,16 @@ def prepare_dataset(dataset):
     Xt = torch.stack(Xt, axis=0)
     yt = torch.stack(yt, axis=0)
 
-    return Xs, ys, Xt, yt, n_features
+    Xt, Xt_test, yt, yt_test = train_test_split(Xt, yt, test_size=0.2, random_state=0)
+
+    return Xs, ys, Xt, yt, Xt_test, yt_test, n_features
 
 def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
-    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'RF':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
+    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
     n_datasets = len(list_of_datasets)
     for j in range(n_datasets):
         print(f'{j+1}/{n_datasets}')
-        Xs, ys, Xt, yt, n_features = prepare_dataset(list_of_datasets[j])
+        Xs, ys, Xt, yt, Xt_test, yt_test, n_features = prepare_dataset(list_of_datasets[j])
 
         Q = []
         for Xs_k, ys_k in zip(Xs, ys):
@@ -107,8 +110,8 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
         YP = [YPk.detach().clone().softmax(dim=-1) for YPk in dictionary.YP]
         Xr, Yr = dictionary.reconstruct(weights=weights)
 
-        classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True), 'RF': RandomForestClassifier()}
-        classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',), 'RF': RandomForestClassifier()}
+        classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True)}
+        classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',)}
 
         
         for key in classifiers_e.keys():
@@ -116,8 +119,8 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
             clf_wda = classifiers_r[key]
             clf_wda.fit(torch.cat(Xs, dim=0),
                     torch.cat(ys, dim=0))
-            yp = clf_wda.predict(Xt)
-            accuracy_wda = accuracy_score(yp, yt)
+            yp = clf_wda.predict(Xt_test)
+            accuracy_wda = accuracy_score(yp, yt_test)
             results[key]['wda'] += accuracy_wda
 
             # DaDiL-E
@@ -128,13 +131,13 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
                 XP_k, YP_k = XP_k.data.cpu(), YP_k.data.cpu()
                 yp_k = YP_k.argmax(dim=1)
                 clf_e.fit(XP_k, yp_k)
-                P = clf_e.predict_proba(Xt)
+                P = clf_e.predict_proba(Xt_test)
                 predictions.append(P)
             predictions = np.stack(predictions)
             # Weights atomic model predictions
             yp = np.einsum('i,inj->nj', weights, predictions).argmax(axis=1)
             # Compute statistics
-            accuracy_e = accuracy_score(yt, yp)
+            accuracy_e = accuracy_score(yt_test, yp)
             results[key]['e'] += accuracy_e
 
             # DaDiL-E with last optimal transport
@@ -151,13 +154,13 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
                     Yt = ot_plan.T @ YP_k
                     yt_k = Yt.argmax(dim=1)
                     clf_e.fit(Xt, yt_k)
-                    P = clf_e.predict_proba(Xt)
+                    P = clf_e.predict_proba(Xt_test)
                     predictions.append(P)
                 predictions = np.stack(predictions)
                 # Weights atomic model predictions
                 yp = np.einsum('i,inj->nj', weights, predictions).argmax(axis=1)
                 # Compute statistics
-                accuracy_e_ot = accuracy_score(yt, yp)
+                accuracy_e_ot = accuracy_score(yt_test, yp)
                 s += accuracy_e_ot
             mean_accuracy_e_ot = s/10
             results[key]['e_ot'] += mean_accuracy_e_ot
@@ -165,8 +168,8 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
             # DaDiL-R
             clf_r = classifiers_r[key]
             clf_r.fit(Xr, Yr.argmax(dim=1))
-            yp = clf_r.predict(Xt)
-            accuracy_r = accuracy_score(yp, yt)
+            yp = clf_r.predict(Xt_test)
+            accuracy_r = accuracy_score(yp, yt_test)
             results[key]['r'] += accuracy_r
 
             # DaDiL-R with last optimal transport
@@ -178,8 +181,8 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
                 ot_plan = ot.emd(weights_r, weights_t, C, numItermax=1000000)
                 Yt = ot_plan.T @ Yr
                 clf_r.fit(Xt, Yt.argmax(dim=1))
-                yp = clf_r.predict(Xt)
-                accuracy_r_ot = accuracy_score(yp, yt)
+                yp = clf_r.predict(Xt_test)
+                accuracy_r_ot = accuracy_score(yp, yt_test)
                 s += accuracy_r_ot
             results[key]['r_ot'] += s/10
     
@@ -191,11 +194,11 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
 
 
 def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
-    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'RF':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
+    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
     n_datasets = len(list_of_datasets)
     for j in range(n_datasets):
         print(f'{j+1}/{n_datasets}')
-        Xs, ys, Xt, yt, n_features = prepare_dataset(list_of_datasets[j])
+        Xs, ys, Xt, yt, Xt_test, yt_test, n_features = prepare_dataset(list_of_datasets[j])
 
         Q_sources = []
         for Xs_k, ys_k in zip(Xs, ys):
@@ -294,16 +297,16 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
 
         Xr, Yr = dictionary_target.reconstruct(weights=weights)
 
-        classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True), 'RF': RandomForestClassifier()}
-        classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',), 'RF': RandomForestClassifier()}
+        classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True)}
+        classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',)}
 
         for key in classifiers_e.keys():
             # Without DA
             clf_wda = classifiers_r[key]
             clf_wda.fit(torch.cat(Xs, dim=0),
                     torch.cat(ys, dim=0))
-            yp = clf_wda.predict(Xt)
-            accuracy_wda = accuracy_score(yp, yt)
+            yp = clf_wda.predict(Xt_test)
+            accuracy_wda = accuracy_score(yp, yt_test)
             results[key]['wda'] += accuracy_wda
 
             #DaDiL-E
@@ -314,13 +317,13 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
                 XP_k, YP_k = XP_k.data.cpu(), YP_k.data.cpu()
                 yp_k = YP_k.argmax(dim=1)
                 clf_e.fit(XP_k, yp_k)
-                P = clf_e.predict_proba(Xt)
+                P = clf_e.predict_proba(Xt_test)
                 predictions.append(P)
             predictions = np.stack(predictions)
             # Weights atomic model predictions
             yp = np.einsum('i,inj->nj', weights, predictions).argmax(axis=1)
             # Compute statistics
-            accuracy_e = accuracy_score(yt, yp)
+            accuracy_e = accuracy_score(yt_test, yp)
             results[key]['e'] += accuracy_e
 
             #DaDiL-E with last optimal transport
@@ -337,13 +340,13 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
                     Yt = ot_plan.T @ YP_k
                     yt_k = Yt.argmax(dim=1)
                     clf_e.fit(Xt, yt_k)
-                    P = clf_e.predict_proba(Xt)
+                    P = clf_e.predict_proba(Xt_test)
                     predictions.append(P)
                 predictions = np.stack(predictions)
                 # Weights atomic model predictions
                 yp = np.einsum('i,inj->nj', weights, predictions).argmax(axis=1)
                 # Compute statistics
-                accuracy_e_ot = accuracy_score(yt, yp)
+                accuracy_e_ot = accuracy_score(yt_test, yp)
                 s += accuracy_e_ot
             results[key]['e_ot'] += s/10
 
@@ -363,8 +366,8 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
                 ot_plan = ot.emd(weights_r, weights_t, C, numItermax=1000000)
                 Yt = ot_plan.T @ Yr
                 clf_r.fit(Xt, Yt.argmax(dim=1))
-                yp = clf_r.predict(Xt)
-                accuracy_r_ot = accuracy_score(yp, yt)
+                yp = clf_r.predict(Xt_test)
+                accuracy_r_ot = accuracy_score(yp, yt_test)
                 s += accuracy_r_ot
             results[key]['r_ot'] += s/10
     
@@ -376,12 +379,10 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
 
 def test_forgetting_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
     before_online_results = {'lin':{'r':[], 'r_ot':[]}, 
-               'rbf':{'r':[], 'r_ot':[]}, 
-               'RF':{'r':[], 'r_ot':[]}}
+               'rbf':{'r':[], 'r_ot':[]}}
     after_online_results = {'lin':{'r':[], 'r_ot':[]}, 
-               'rbf':{'r':[], 'r_ot':[]}, 
-               'RF':{'r':[], 'r_ot':[]}}
-    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',), 'RF': RandomForestClassifier()}
+               'rbf':{'r':[], 'r_ot':[]}}
+    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',)}
 
     n_datasets = len(list_of_datasets)
 
@@ -449,21 +450,21 @@ def test_forgetting_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batc
                 #DaDiL-R
                 clf_r = classifiers_r[key]
                 clf_r.fit(Xr, Yr.argmax(dim=1))
-                yp = clf_r.predict(Xt)
-                accuracy_r = accuracy_score(yp, yt)
+                yp = clf_r.predict(Xs[i])
+                accuracy_r = accuracy_score(yp, ys[i])
                 before_online_results[key]['r'].append(accuracy_r)
 
                 #DaDiL-R with last optimal transport
                 s = 0
                 for _ in range(10):
                     weights_r = torch.ones(Xr.shape[0])/Xr.shape[0]
-                    weights_t = torch.ones(Xt.shape[0])/Xt.shape[0]
-                    C = torch.cdist(Xr, Xt, p=2) ** 2
+                    weights_t = torch.ones(Xs[i].shape[0])/Xs[i].shape[0]
+                    C = torch.cdist(Xr, Xs[i], p=2) ** 2
                     ot_plan = ot.emd(weights_r, weights_t, C, numItermax=1000000)
                     Yt = ot_plan.T @ Yr
-                    clf_r.fit(Xt, Yt.argmax(dim=1))
-                    yp = clf_r.predict(Xt)
-                    accuracy_r_ot = accuracy_score(yp, yt)
+                    clf_r.fit(Xs[i], Yt.argmax(dim=1))
+                    yp = clf_r.predict(Xs[i])
+                    accuracy_r_ot = accuracy_score(yp, ys[i])
                     s += accuracy_r_ot
                 before_online_results[key]['r_ot'].append(s/10)
 
@@ -518,21 +519,21 @@ def test_forgetting_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batc
                 #DaDiL-R
                 clf_r = classifiers_r[key]
                 clf_r.fit(Xr, Yr.argmax(dim=1))
-                yp = clf_r.predict(Xt)
-                accuracy_r = accuracy_score(yp, yt)
+                yp = clf_r.predict(Xs[i])
+                accuracy_r = accuracy_score(yp, ys[i])
                 after_online_results[key]['r'].append(accuracy_r)
 
                 #DaDiL-R with last optimal transport
                 s = 0
                 for _ in range(10):
                     weights_r = torch.ones(Xr.shape[0])/Xr.shape[0]
-                    weights_t = torch.ones(Xt.shape[0])/Xt.shape[0]
-                    C = torch.cdist(Xr, Xt, p=2) ** 2
+                    weights_t = torch.ones(Xs[i].shape[0])/Xs[i].shape[0]
+                    C = torch.cdist(Xr, Xs[i], p=2) ** 2
                     ot_plan = ot.emd(weights_r, weights_t, C, numItermax=1000000)
                     Yt = ot_plan.T @ Yr
-                    clf_r.fit(Xt, Yt.argmax(dim=1))
-                    yp = clf_r.predict(Xt)
-                    accuracy_r_ot = accuracy_score(yp, yt)
+                    clf_r.fit(Xs[i], Yt.argmax(dim=1))
+                    yp = clf_r.predict(Xs[i])
+                    accuracy_r_ot = accuracy_score(yp, ys[i])
                     s += accuracy_r_ot
                 after_online_results[key]['r_ot'].append(s/10)
     
