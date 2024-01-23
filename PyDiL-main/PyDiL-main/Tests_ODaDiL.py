@@ -375,7 +375,7 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
         for kk in results[kr].keys():
             results[kr][kk] /= n_datasets
     
-    return results
+    return results, dictionary_target
 
 def test_forgetting_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
     before_online_results = {'lin':{'r':[], 'r_ot':[]}, 

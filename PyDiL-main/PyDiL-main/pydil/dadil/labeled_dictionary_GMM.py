@@ -7,8 +7,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from pydil.ot_utils.pot_utils import proj_simplex
 from pydil.ipms.ot_ipms import JointWassersteinDistance
 from pydil.ot_utils.barycenters import wasserstein_barycenter
-from pydil.utils.Online_GMM import Online_GMM
 from pydil.utils.igmm_modif import IGMM
+from pydil.ot_utils.pot_utils import emd
+import copy
 
 
 class LabeledDictionaryGMM(torch.nn.Module):
@@ -188,7 +189,9 @@ class LabeledDictionaryGMM(torch.nn.Module):
             'weights': [],
             'atoms_features': [],
             'atoms_labels': [],
-            'loss_per_dataset': {name: [] for name in self.domain_names}
+            'loss_per_dataset': {name: [] for name in self.domain_names},
+            'OGMM_evolution': [],
+            'atoms_evolution': [[],]*n_components
         }
 
         self.OGMM = None
@@ -406,6 +409,33 @@ class LabeledDictionaryGMM(torch.nn.Module):
                 np.random.shuffle(atom_batch_indices)
                 batch_indices.append(atom_batch_indices)
             yield batch_indices
+    
+    def GMM_wasserstein_distance(self, gmm1, gmm2):
+        means1 = torch.from_numpy(gmm1.means_)
+        means2 = torch.from_numpy(gmm2.means_)
+        covariances1 = torch.from_numpy(gmm1.covariances_)
+        covariances2 = torch.from_numpy(gmm2.covariances_)
+        weights1 = torch.from_numpy(gmm1.weights_)
+        weights2 = torch.from_numpy(gmm2.weights_)
+
+        C_m = torch.cdist(means1, means2, p=2) ** 2
+        C_c = np.zeros((covariances1.shape[0], covariances2.shape[0]))
+        for i in range(covariances1.shape[0]):
+            for j in range(covariances2.shape[0]):
+                C_c[i, j] = torch.norm(covariances1[i] - covariances2[j], p='fro') ** 2
+        C = C_m + C_c
+
+        ot_plan = emd(weights1, weights2, C, n_iter_max=1000000)
+        return torch.sum(C * ot_plan)
+    
+    def distribution_wasserstein_distance(self, X1, X2, Y1, Y2):
+        C = torch.cdist(X1, X2, p=2) ** 2
+        C += C.max()*torch.cdist(Y1, Y2, p=2) ** 2
+        weights1 = torch.ones(X1.shape[0]) / X1.shape[0]
+        weights2 = torch.ones(X2.shape[0]) / X2.shape[0]
+
+        ot_plan = emd(weights1, weights2, C, n_iter_max=1000000)
+        return torch.sum(C * ot_plan)
 
     def fit_without_replacement(self,
                                 datasets,
@@ -604,7 +634,11 @@ class LabeledDictionaryGMM(torch.nn.Module):
         """
         if self.OGMM == None:
             self.OGMM = IGMM(min_components=self.min_components, max_step_components=self.max_step_components, max_components=self.max_components)
-        self.OGMM.fit(target_sample)
+            self.OGMM.fit(target_sample)
+        else:
+            old_gmm = copy.deepcopy(self.OGMM)
+            self.OGMM.fit(target_sample)
+            self.history['OGMM_evolution'].append(self.GMM_wasserstein_distance(old_gmm, self.OGMM))
         
         if self.online_optimizer == None:
             self.online_optimizer = self.configure_optimizers(regularization=regularization)
@@ -656,6 +690,12 @@ class LabeledDictionaryGMM(torch.nn.Module):
         _XP, _YP = self.get_atoms()
         self.history['atoms_features'].append(_XP)
         self.history['atoms_labels'].append(_YP)
+        if len(self.history['atoms_features']) > 1:
+            for at in range(self.n_components):
+                self.history['atoms_evolution'][at].append(
+                    self.distribution_wasserstein_distance(
+                        self.history['atoms_features'][-2][at], self.history['atoms_features'][-1][at], 
+                        self.history['atoms_labels'][-2][at], self.history['atoms_labels'][-1][at]))
         self.history['weights'].append(proj_simplex(self.A.data.T).T)
         self.history['loss'].append(avg_it_loss)
         self.history['loss_per_dataset'][self.domain_names[0]].append(
@@ -784,3 +824,4 @@ class LabeledDictionaryGMM(torch.nn.Module):
                     propagate_labels=True, penalize_labels=True)
                 Q_rec = [XB, YB]
         return Q_rec
+    
