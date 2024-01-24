@@ -191,7 +191,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
             'atoms_labels': [],
             'loss_per_dataset': {name: [] for name in self.domain_names},
             'OGMM_evolution': [],
-            'atoms_evolution': [[],]*n_components
+            'atoms_evolution': [[] for _ in range(self.n_components)]
         }
 
         self.OGMM = None
@@ -426,7 +426,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
         C = C_m + C_c
 
         ot_plan = emd(weights1, weights2, C, n_iter_max=1000000)
-        return torch.sum(C * ot_plan)
+        return torch.sum(C * ot_plan).item()
     
     def distribution_wasserstein_distance(self, X1, X2, Y1, Y2):
         C = torch.cdist(X1, X2, p=2) ** 2
@@ -435,7 +435,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
         weights2 = torch.ones(X2.shape[0]) / X2.shape[0]
 
         ot_plan = emd(weights1, weights2, C, n_iter_max=1000000)
-        return torch.sum(C * ot_plan)
+        return torch.sum(C * ot_plan).item()
 
     def fit_without_replacement(self,
                                 datasets,
@@ -599,6 +599,12 @@ class LabeledDictionaryGMM(torch.nn.Module):
             _XP, _YP = self.get_atoms()
             self.history['atoms_features'].append(_XP)
             self.history['atoms_labels'].append(_YP)
+            if len(self.history['atoms_features']) > 1:
+                for ato in range(self.n_components):
+                    self.history['atoms_evolution'][ato].append(
+                        self.distribution_wasserstein_distance(
+                            self.history['atoms_features'][-2][ato], self.history['atoms_features'][-1][ato], 
+                            self.history['atoms_labels'][-2][ato], self.history['atoms_labels'][-1][ato]))
             self.history['weights'].append(proj_simplex(self.A.data.T).T)
             self.history['loss'].append(avg_it_loss)
             for ℓ in range(len(datasets)):

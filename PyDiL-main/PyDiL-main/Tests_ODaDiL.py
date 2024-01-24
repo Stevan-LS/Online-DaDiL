@@ -190,7 +190,7 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
         for kk in results[kr].keys():
             results[kr][kk] /= n_datasets
     
-    return results
+    return results, dictionary
 
 
 def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
