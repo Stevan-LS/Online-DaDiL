@@ -410,6 +410,21 @@ class LabeledDictionaryGMM(torch.nn.Module):
                 batch_indices.append(atom_batch_indices)
             yield batch_indices
     
+    def bures_wasserstein_metric(self, mean1, mean2, cov1, cov2, reg=1e-6):
+        mean_diff = torch.linalg.norm(mean1 - mean2) ** 2
+        cov1 += reg * torch.eye(cov1.shape[0])
+        cov2 += reg * torch.eye(cov2.shape[0])
+
+        DP, VP = torch.linalg.eig(cov1)
+        DP = torch.diag(DP ** (1 / 2))
+        covP_sqrt = (VP @ DP @ VP.T).real
+        D, V = torch.linalg.eig(covP_sqrt @ cov2 @ covP_sqrt)
+        D = torch.diag(D ** (1 / 2))
+        M = (V @ D @ V.T).real
+        cov_diff = torch.trace(cov1) + torch.trace(cov2) - 2 * torch.trace(M)
+
+        return torch.sqrt(mean_diff + cov_diff)
+    
     def GMM_wasserstein_distance(self, gmm1, gmm2):
         means1 = torch.from_numpy(gmm1.means_)
         means2 = torch.from_numpy(gmm2.means_)
@@ -418,12 +433,10 @@ class LabeledDictionaryGMM(torch.nn.Module):
         weights1 = torch.from_numpy(gmm1.weights_)
         weights2 = torch.from_numpy(gmm2.weights_)
 
-        C_m = torch.cdist(means1, means2, p=2) ** 2
-        C_c = np.zeros((covariances1.shape[0], covariances2.shape[0]))
+        C = torch.zeros((covariances1.shape[0], covariances2.shape[0]))
         for i in range(covariances1.shape[0]):
             for j in range(covariances2.shape[0]):
-                C_c[i, j] = torch.norm(covariances1[i] - covariances2[j], p='fro') ** 2
-        C = C_m + C_c
+                C[i, j] = self.bures_wasserstein_metric(means1[i], means2[j], covariances1[i], covariances2[j])
 
         ot_plan = emd(weights1, weights2, C, n_iter_max=1000000)
         return torch.sum(C * ot_plan).item()

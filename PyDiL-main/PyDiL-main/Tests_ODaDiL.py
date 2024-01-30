@@ -49,7 +49,7 @@ def prepare_dataset(dataset):
     return Xs, ys, Xt, yt, Xt_test, yt_test, n_features
 
 def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
-    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
+    results = {'lin':{'wda': [], 'e':[], 'e_ot':[], 'r':[], 'r_ot':[]}, 'rbf':{'wda': [], 'e':[], 'e_ot':[], 'r':[], 'r_ot':[]}}
     n_datasets = len(list_of_datasets)
     for j in range(n_datasets):
         print(f'{j+1}/{n_datasets}')
@@ -121,7 +121,7 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
                     torch.cat(ys, dim=0))
             yp = clf_wda.predict(Xt_test)
             accuracy_wda = accuracy_score(yp, yt_test)
-            results[key]['wda'] += accuracy_wda
+            results[key]['wda'].append(accuracy_wda)
 
             # DaDiL-E
             clf_e = classifiers_e[key]
@@ -138,7 +138,7 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
             yp = np.einsum('i,inj->nj', weights, predictions).argmax(axis=1)
             # Compute statistics
             accuracy_e = accuracy_score(yt_test, yp)
-            results[key]['e'] += accuracy_e
+            results[key]['e'].append(accuracy_e)
 
             # DaDiL-E with last optimal transport
             s = 0
@@ -163,14 +163,14 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
                 accuracy_e_ot = accuracy_score(yt_test, yp)
                 s += accuracy_e_ot
             mean_accuracy_e_ot = s/10
-            results[key]['e_ot'] += mean_accuracy_e_ot
+            results[key]['e_ot'].append(mean_accuracy_e_ot)
 
             # DaDiL-R
             clf_r = classifiers_r[key]
             clf_r.fit(Xr, Yr.argmax(dim=1))
             yp = clf_r.predict(Xt_test)
             accuracy_r = accuracy_score(yp, yt_test)
-            results[key]['r'] += accuracy_r
+            results[key]['r'].append(accuracy_r)
 
             # DaDiL-R with last optimal transport
             s = 0
@@ -184,17 +184,18 @@ def test_dadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_it
                 yp = clf_r.predict(Xt_test)
                 accuracy_r_ot = accuracy_score(yp, yt_test)
                 s += accuracy_r_ot
-            results[key]['r_ot'] += s/10
+            results[key]['r_ot'].append(s/10)
     
     for kr in results.keys():
         for kk in results[kr].keys():
-            results[kr][kk] /= n_datasets
+            L = results[kr][kk]
+            results[kr][kk] = (np.mean(L), np.std(L))
     
     return results, dictionary
 
 
 def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
-    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
+    results = {'lin':{'wda': [], 'e':[], 'e_ot':[], 'r':[], 'r_ot':[]}, 'rbf':{'wda': [], 'e':[], 'e_ot':[], 'r':[], 'r_ot':[]}}
     n_datasets = len(list_of_datasets)
     for j in range(n_datasets):
         print(f'{j+1}/{n_datasets}')
@@ -260,8 +261,8 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
                                         weight_initialization='uniform',
                                         n_distributions=1,
                                         loss_fn=criterion,
-                                        learning_rate_features=0,
-                                        learning_rate_labels=0,
+                                        learning_rate_features=1e-1,
+                                        learning_rate_labels=1e-1,
                                         learning_rate_weights=1e-1,
                                         reg_e=0.0,
                                         n_iter_barycenter=10,
@@ -307,7 +308,7 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
                     torch.cat(ys, dim=0))
             yp = clf_wda.predict(Xt_test)
             accuracy_wda = accuracy_score(yp, yt_test)
-            results[key]['wda'] += accuracy_wda
+            results[key]['wda'].append(accuracy_wda)
 
             #DaDiL-E
             clf_e = classifiers_e[key]
@@ -324,7 +325,7 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
             yp = np.einsum('i,inj->nj', weights, predictions).argmax(axis=1)
             # Compute statistics
             accuracy_e = accuracy_score(yt_test, yp)
-            results[key]['e'] += accuracy_e
+            results[key]['e'].append(accuracy_e)
 
             #DaDiL-E with last optimal transport
             s = 0
@@ -348,14 +349,14 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
                 # Compute statistics
                 accuracy_e_ot = accuracy_score(yt_test, yp)
                 s += accuracy_e_ot
-            results[key]['e_ot'] += s/10
+            results[key]['e_ot'].append(s/10)
 
             #DaDiL-R
             clf_r = classifiers_r[key]
             clf_r.fit(Xr, Yr.argmax(dim=1))
             yp = clf_r.predict(Xt)
             accuracy_r = accuracy_score(yp, yt)
-            results[key]['r'] += accuracy_r
+            results[key]['r'].append(accuracy_r)
 
             #DaDiL-R with last optimal transport
             s = 0
@@ -369,13 +370,14 @@ def test_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_i
                 yp = clf_r.predict(Xt_test)
                 accuracy_r_ot = accuracy_score(yp, yt_test)
                 s += accuracy_r_ot
-            results[key]['r_ot'] += s/10
+            results[key]['r_ot'].append(s/10)
     
     for kr in results.keys():
         for kk in results[kr].keys():
-            results[kr][kk] /= n_datasets
+            L = results[kr][kk]
+            results[kr][kk] = (np.mean(L), np.std(L))
     
-    return results, dictionary_target
+    return results, dictionary_sources, dictionary_target
 
 def test_forgetting_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batch_size, n_iter):
     before_online_results = {'lin':{'r':[], 'r_ot':[]}, 
@@ -388,7 +390,7 @@ def test_forgetting_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batc
 
     for j in range(n_datasets):
         print(f'{j+1}/{n_datasets}')
-        Xs, ys, Xt, yt, n_features = prepare_dataset(list_of_datasets[j])
+        Xs, ys, Xt, yt, Xt_test, yt_test,n_features = prepare_dataset(list_of_datasets[j])
 
         Q_sources = []
         for Xs_k, ys_k in zip(Xs, ys):
@@ -479,8 +481,8 @@ def test_forgetting_odadil(list_of_datasets, n_samples, n_classes, n_atoms, batc
                                         weight_initialization='uniform',
                                         n_distributions=1,
                                         loss_fn=criterion,
-                                        learning_rate_features=0,
-                                        learning_rate_labels=0,
+                                        learning_rate_features=1e-1,
+                                        learning_rate_labels=1e-1,
                                         learning_rate_weights=1e-1,
                                         reg_e=0.0,
                                         n_iter_barycenter=10,

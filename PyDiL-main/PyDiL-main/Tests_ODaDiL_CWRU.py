@@ -21,7 +21,7 @@ from sklearn.metrics import accuracy_score
 
 
 def test_dadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_classes, n_atoms, batch_size, n_iter):
-    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'RF':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
+    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
 
     Q = []
     for Xs_k, ys_k in zip(Xs, ys):
@@ -78,8 +78,8 @@ def test_dadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_classe
     YP = [YPk.detach().clone().softmax(dim=-1) for YPk in dictionary.YP]
     Xr, Yr = dictionary.reconstruct(weights=weights)
 
-    classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True), 'RF': RandomForestClassifier()}
-    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',), 'RF': RandomForestClassifier()}
+    classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True)}
+    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf')}
 
     
     for key in classifiers_e.keys():
@@ -159,7 +159,7 @@ def test_dadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_classe
 
 
 def test_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_classes, n_atoms, batch_size, n_iter):
-    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'RF':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
+    results = {'lin':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}, 'rbf':{'wda': 0, 'e':0, 'e_ot':0, 'r':0, 'r_ot':0}}
     
     Q_sources = []
     for Xs_k, ys_k in zip(Xs, ys):
@@ -221,8 +221,8 @@ def test_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_class
                                     weight_initialization='uniform',
                                     n_distributions=1,
                                     loss_fn=criterion,
-                                    learning_rate_features=0,
-                                    learning_rate_labels=0,
+                                    learning_rate_features=1e-2,
+                                    learning_rate_labels=1e-2,
                                     learning_rate_weights=1e-1,
                                     reg_e=0.0,
                                     n_iter_barycenter=10,
@@ -258,8 +258,8 @@ def test_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_class
 
     Xr, Yr = dictionary_target.reconstruct(weights=weights)
 
-    classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True), 'RF': RandomForestClassifier()}
-    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',), 'RF': RandomForestClassifier()}
+    classifiers_e = {'lin': SVC(kernel='linear', probability=True), 'rbf': SVC(kernel='rbf', probability=True)}
+    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf')}
     ogmm_samples = dictionary_target.OGMM.sample(6000)[0]
 
     for key in classifiers_e.keys():
@@ -333,17 +333,15 @@ def test_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_class
             s += accuracy_r_ot
         results[key]['r_ot'] += s/10
 
-    return results
+    return results, dictionary_sources, dictionary_target
 
 
 def test_forgetting_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_samples, n_classes, n_atoms, batch_size, n_iter):
     before_online_results = {'lin':{'r':[], 'r_ot':[]}, 
-               'rbf':{'r':[], 'r_ot':[]}, 
-               'RF':{'r':[], 'r_ot':[]}}
+               'rbf':{'r':[], 'r_ot':[]}}
     after_online_results = {'lin':{'r':[], 'r_ot':[]}, 
-               'rbf':{'r':[], 'r_ot':[]}, 
-               'RF':{'r':[], 'r_ot':[]}}
-    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf',), 'RF': RandomForestClassifier()}
+               'rbf':{'r':[], 'r_ot':[]}}
+    classifiers_r = {'lin': SVC(kernel='linear'), 'rbf': SVC(kernel='rbf')}
 
     Q_sources = []
     for Xs_k, ys_k in zip(Xs, ys):
@@ -434,8 +432,8 @@ def test_forgetting_odadil(Xs, ys, Xt, yt, Xt_test, yt_test, n_features, n_sampl
                                     weight_initialization='uniform',
                                     n_distributions=1,
                                     loss_fn=criterion,
-                                    learning_rate_features=0,
-                                    learning_rate_labels=0,
+                                    learning_rate_features=1e-2,
+                                    learning_rate_labels=1e-2,
                                     learning_rate_weights=1e-1,
                                     reg_e=0.0,
                                     n_iter_barycenter=10,
