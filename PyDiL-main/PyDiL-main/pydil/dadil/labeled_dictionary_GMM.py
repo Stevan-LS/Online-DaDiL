@@ -410,7 +410,7 @@ class LabeledDictionaryGMM(torch.nn.Module):
                 batch_indices.append(atom_batch_indices)
             yield batch_indices
     
-    def bures_wasserstein_metric(self, mean1, mean2, cov1, cov2, reg=1e-6):
+    def bures_wasserstein_metric(self, mean1, mean2, cov1, cov2, reg=1e-5):
         mean_diff = torch.linalg.norm(mean1 - mean2) ** 2
         cov1 += reg * torch.eye(cov1.shape[0])
         cov2 += reg * torch.eye(cov2.shape[0])
