@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from pydil.ot_utils.pot_utils import proj_simplex
 from pydil.ipms.ot_ipms import JointWassersteinDistance
 from pydil.ot_utils.barycenters import wasserstein_barycenter
-from pydil.utils.igmm_modif import IGMM
+from pydil.utils.igmm import IGMM
 from pydil.ot_utils.pot_utils import emd
 import copy
 
